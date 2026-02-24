@@ -749,8 +749,12 @@
                 // ── 新增：後端 API 呼叫共用函式 (安全 POST 傳輸) ──
                 const targetIdRef = ref('');
                 const callApi = async (action, extraData = {}) => {
+                    await liff.ready; // 確保 LIFF 完全準備好
                     const liffToken = liff.getIDToken();
-                    if (!liffToken) throw new Error("無效的 LIFF Token，請確認已登入 LINE。");
+
+                    if (!liffToken) {
+                        throw new Error("無法取得安全憑證 (Token)。如果你在外部瀏覽器開啟，請確保你已登入 LINE。");
+                    }
 
                     const context = liff.getContext();
                     const payload = {
