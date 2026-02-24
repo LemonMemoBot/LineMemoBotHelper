@@ -757,11 +757,11 @@
                         throw new Error("無法取得安全憑證 (Token)。如果你在外部瀏覽器開啟，請確保你已登入 LINE。");
                     }
 
-                    const context = liff.getContext();
                     const payload = {
                         action,
                         liffToken,
-                        groupId: context && (context.type === 'group' || context.type === 'room') ? (context.groupId || context.roomId) : '',
+                        // 改由前端元件統一提供的 targetIdRef (優先吃網址參數，其次 context) 傳回後端
+                        groupId: targetIdRef.value,
                         ...extraData
                     };
 
@@ -807,12 +807,21 @@
                             return;
                         }
 
-                        // 取得使用者資料與環境
+                        // 💡 核心解法：優先從網址參數取得 ownerId (由機器人帶入)
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const paramOwnerId = urlParams.get('ownerId');
+
+                        // 取得使用者資料與環境 (作為備案)
                         const profile = await liff.getProfile();
                         const context = liff.getContext();
 
                         let targetId = '';
-                        if (context && (context.type === 'group' || context.type === 'room')) {
+                        if (paramOwnerId) {
+                            // 如果網址有帶，直接信任網址 (解決 Provider 脫鉤與 Room 隱私問題)
+                            targetId = paramOwnerId;
+                            userDisplayName.value = targetId.startsWith('C') || targetId.startsWith('R') ? '群組' : profile.displayName;
+                        } else if (context && (context.type === 'group' || context.type === 'room')) {
+                            // 退回舊版機制 (萬一使用者不是透過按鈕點擊進來)
                             targetId = context.groupId || context.roomId;
                             userDisplayName.value = '群組';
                         } else {
