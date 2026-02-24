@@ -494,7 +494,8 @@
             <!-- Header -->
             <header class="app-header">
                 <h1>📝 筆記小幫手</h1>
-                <p class="subtitle">{{ userDisplayName }} 的筆記庫 · 共 {{ allNotes.length }} 則</p>
+                <p class="subtitle">{{ userDisplayName }} 的筆記庫 · 共 {{ allNotes.length }} 則<br><span
+                        style="font-size: 0.65rem; color: #aaa;">ID: {{ targetIdRef }}</span></p>
             </header>
 
             <!-- 搜尋欄 -->
@@ -867,7 +868,7 @@
                     activeMain, activeSub,
                     displayedNotes, filteredBySearch,
                     searchQuery, selectMain,
-                    onDeleteNote
+                    onDeleteNote, targetIdRef
                 };
             }
         });
