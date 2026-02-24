@@ -302,11 +302,34 @@
             padding: 14px 16px;
         }
 
+        .card-header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
         .card-tags {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            margin-bottom: 10px;
+        }
+
+        .btn-delete {
+            background: transparent;
+            border: none;
+            font-size: 1.1rem;
+            color: var(--text-3);
+            cursor: pointer;
+            padding: 4px;
+            margin: -4px 0 -4px 8px;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition);
+        }
+
+        .btn-delete:hover {
+            color: #E53E3E;
+            background: #FED7D7;
         }
 
         .tag-chip {
@@ -490,7 +513,8 @@
                     <span class="notes-count">搜尋「{{ searchQuery }}」· {{ filteredBySearch.length }} 筆</span>
                 </div>
                 <div class="cards-grid">
-                    <note-card v-for="note in filteredBySearch" :key="note.noteId" :note="note"></note-card>
+                    <note-card v-for="note in filteredBySearch" :key="note.noteId" :note="note"
+                        @delete-note="onDeleteNote"></note-card>
                     <div v-if="filteredBySearch.length === 0" class="empty-state">
                         <div class="emoji">🔍</div>
                         <h3>找不到相關筆記</h3>
@@ -523,7 +547,8 @@
                 </div>
 
                 <div class="cards-grid">
-                    <note-card v-for="note in displayedNotes" :key="note.noteId" :note="note"></note-card>
+                    <note-card v-for="note in displayedNotes" :key="note.noteId" :note="note"
+                        @delete-note="onDeleteNote"></note-card>
 
                     <div v-if="displayedNotes.length === 0" class="empty-state">
                         <div class="emoji">📭</div>
@@ -556,10 +581,14 @@
       </div>
 
       <div class="card-body">
-        <!-- 標籤 -->
-        <div class="card-tags">
-          <span class="tag-chip main">#{{ note.mainTag }}</span>
-          <span v-if="note.subTag && note.subTag !== '其他'" class="tag-chip sub">{{ note.subTag }}</span>
+        <div class="card-header-bar">
+          <!-- 標籤 -->
+          <div class="card-tags">
+            <span class="tag-chip main">#{{ note.mainTag }}</span>
+            <span v-if="note.subTag && note.subTag !== '其他'" class="tag-chip sub">{{ note.subTag }}</span>
+          </div>
+          <!-- 刪除按鈕 -->
+          <button class="btn-delete" @click="confirmDelete" title="刪除筆記">🗑️</button>
         </div>
 
         <!-- 內容文字 -->
@@ -605,6 +634,7 @@
             data() {
                 return { ogImage: null };
             },
+            emits: ['delete-note'],
             mounted() {
                 if (this.note.urls && this.note.urls[0]) {
                     this.loadOgImage(this.note.urls[0]);
@@ -634,6 +664,12 @@
                         return d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' });
                     } catch {
                         return '';
+                    }
+                },
+
+                confirmDelete() {
+                    if (confirm('確定要刪除這則筆記嗎？刪除後無法復原。')) {
+                        this.$emit('delete-note', this.note.noteId);
                     }
                 }
             }
@@ -710,6 +746,52 @@
                 // ── 監聽主分類變化 ──
                 watch(activeMain, () => { activeSub.value = '__ALL__'; });
 
+                // ── 新增：後端 API 呼叫共用函式 (安全 POST 傳輸) ──
+                const targetIdRef = ref('');
+                const callApi = async (action, extraData = {}) => {
+                    const liffToken = liff.getIDToken();
+                    if (!liffToken) throw new Error("無效的 LIFF Token，請確認已登入 LINE。");
+
+                    const context = liff.getContext();
+                    const payload = {
+                        action,
+                        liffToken,
+                        groupId: context && (context.type === 'group' || context.type === 'room') ? (context.groupId || context.roomId) : '',
+                        ...extraData
+                    };
+
+                    const res = await fetch(GAS_URL, {
+                        method: 'POST',
+                        // 刻意不指定 Content-Type 以避免觸發 CORS Preflight (OPTIONS)，讓 GAS doPost 能直接接收
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!res.ok) throw new Error(`HTTP 錯誤碼 ${res.status}`);
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+                    return data;
+                };
+
+                // ── 刪除 API 呼叫與本地狀態更新 ──
+                const onDeleteNote = async (noteId) => {
+                    // 樂觀更新：先從本地移除，讓畫面瞬間刷新
+                    const originalNotes = [...allNotes.value];
+                    allNotes.value = allNotes.value.filter(n => n.noteId !== noteId);
+
+                    // 同步更新本地快取
+                    const cacheKey = `notes_cache_${targetIdRef.value}`;
+                    localStorage.setItem(cacheKey, JSON.stringify(allNotes.value));
+
+                    try {
+                        await callApi('delete', { noteId });
+                    } catch (e) {
+                        alert(`刪除失敗：${e.message}`);
+                        // 發生錯誤則還原本地資料
+                        allNotes.value = originalNotes;
+                        localStorage.setItem(cacheKey, JSON.stringify(allNotes.value));
+                    }
+                };
+
                 // ── 初始化 LIFF 並載入資料 ──
                 onMounted(async () => {
                     try {
@@ -720,26 +802,56 @@
                             return;
                         }
 
-                        // 取得使用者資料
+                        // 取得使用者資料與環境
                         const profile = await liff.getProfile();
-                        userDisplayName.value = profile.displayName;
-                        const userId = profile.userId;
+                        const context = liff.getContext();
 
-                        // 呼叫 GAS API 取得筆記（userId 在後端做資料隔離）
-                        const apiUrl = `${GAS_URL}?action=getNotes&userId=${encodeURIComponent(userId)}`;
-                        const res = await fetch(apiUrl);
+                        let targetId = '';
+                        if (context && (context.type === 'group' || context.type === 'room')) {
+                            targetId = context.groupId || context.roomId;
+                            userDisplayName.value = '群組';
+                        } else {
+                            targetId = profile.userId;
+                            userDisplayName.value = profile.displayName;
+                        }
+                        targetIdRef.value = targetId;
 
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        // 💡 效能優化：先從 localStorage 顯示暫存快取，讓畫面「秒開」
+                        const cacheKey = `notes_cache_${targetId}`;
+                        const cachedData = localStorage.getItem(cacheKey);
+                        if (cachedData) {
+                            try {
+                                allNotes.value = JSON.parse(cachedData);
+                                state.value = 'ready'; // 直接解除 Loading 狀態
+                            } catch (e) {
+                                console.warn("快取解析失敗", e);
+                            }
+                        }
 
-                        const data = await res.json();
+                        // 背景呼叫 GAS API 取得最新筆記 (使用安全 POST + Token)
+                        callApi('getNotes')
+                            .then(data => {
+                                allNotes.value = data.notes || [];
 
-                        if (data.error) throw new Error(data.error);
+                                // 更新快取
+                                localStorage.setItem(cacheKey, JSON.stringify(data.notes));
 
-                        allNotes.value = data.notes || [];
-                        state.value = 'ready';
+                                // 如果原本沒快取，現在才解開 Loading
+                                if (state.value === 'loading') {
+                                    state.value = 'ready';
+                                }
+                            })
+                            .catch(err => {
+                                // 只有在連快取都沒有的情況下才顯示錯誤
+                                if (state.value === 'loading') {
+                                    errorMsg.value = `載入失敗：${err.message}`;
+                                    state.value = 'error';
+                                }
+                                console.error('GAS API 拉取錯誤:', err);
+                            });
 
                     } catch (err) {
-                        errorMsg.value = `載入失敗：${err.message}`;
+                        errorMsg.value = `初始化失敗：${err.message}`;
                         state.value = 'error';
                         console.error('LIFF 初始化錯誤:', err);
                     }
@@ -750,7 +862,8 @@
                     allNotes, mainTags, subTags,
                     activeMain, activeSub,
                     displayedNotes, filteredBySearch,
-                    searchQuery, selectMain
+                    searchQuery, selectMain,
+                    onDeleteNote
                 };
             }
         });
@@ -758,6 +871,5 @@
         app.mount('#app');
     </script>
 </body>
-
 
 </html>
