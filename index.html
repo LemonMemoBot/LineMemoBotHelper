@@ -32,9 +32,10 @@
         }
 
         :root {
-            --brand: #4A90D9;
-            --brand-dark: #2C6FAC;
-            --brand-light: #EBF4FF;
+            --brand: #1E3A8A;
+            /* 原本的淺藍改深藍 (Tailwind blue-900) */
+            --brand-dark: #172554;
+            --brand-light: #EFF6FF;
             --success: #27AE60;
             --bg: #F0F4F8;
             --surface: #FFFFFF;
@@ -127,7 +128,8 @@
             flex: 1;
             border: none;
             outline: none;
-            font-size: .9rem;
+            font-size: 16px;
+            /* 避免 iOS 自動縮放 */
             font-family: inherit;
             color: var(--text-1);
             background: transparent;
@@ -268,6 +270,8 @@
             cursor: pointer;
             text-decoration: none;
             color: inherit;
+            position: relative;
+            /* 供右上角刪除按鈕定位 */
         }
 
         @keyframes cardIn {
@@ -353,16 +357,21 @@
         }
 
         .btn-delete {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.9);
             border: none;
             color: var(--text-3);
             cursor: pointer;
-            padding: 2px;
-            border-radius: var(--radius-sm);
+            padding: 6px;
+            border-radius: 50%;
             transition: all var(--transition);
             display: flex;
             align-items: center;
             justify-content: center;
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            z-index: 10;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
         }
 
         .btn-delete .material-symbols-outlined {
@@ -371,7 +380,8 @@
 
         .btn-delete:hover {
             color: #E53E3E;
-            background: #FED7D7;
+            background: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
 
         .tag-chip.main {
@@ -491,8 +501,7 @@
                     <span class="material-symbols-outlined" style="font-size: 1.5rem;">edit_note</span>
                     筆記小幫手
                 </h1>
-                <p class="subtitle">{{ userDisplayName }} 的筆記庫 · 共 {{ allNotes.length }} 則<br><span
-                        style="font-size: 0.65rem; color: #aaa;">ID: {{ targetIdRef }}</span></p>
+                <p class="subtitle">{{ userDisplayName }} 的筆記庫 · 共 {{ allNotes.length }} 則</p>
             </header>
 
             <!-- 搜尋欄 -->
@@ -566,6 +575,12 @@
     <!-- NoteCard 元件模板 -->
     <script type="text/x-template" id="note-card-tpl">
     <a :href="note.urls && note.urls[0] ? note.urls[0] : '#'" target="_blank" @click="handleCardClick($event)" class="note-card">
+      
+      <!-- 絕對定位的刪除按鈕 (右上角) -->
+      <button class="btn-delete" @click.stop.prevent="confirmDelete" title="刪除筆記">
+          <span class="material-symbols-outlined">delete</span>
+      </button>
+
       <!-- OG 圖片預覽（如果有網址則顯示） -->
       <div v-if="note.urls && note.urls[0]" class="card-og-wrap">
         <img
@@ -593,12 +608,9 @@
             <div style="font-size: 0.65rem; color: #888;">{{ extractDateInfo(note.createdAt, 'time') }}</div>
           </div>
           
-          <!-- 右側 Tag & 刪除鈕 -->
+          <!-- 右側 Tag -->
           <div class="card-actions">
             <span class="tag-chip main">{{ note.mainTag }}</span>
-            <button class="btn-delete" @click.stop.prevent="confirmDelete" title="刪除筆記">
-                <span class="material-symbols-outlined">delete</span>
-            </button>
           </div>
         </div>
       </div>
