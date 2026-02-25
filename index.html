@@ -703,9 +703,10 @@
           v-if="ogImage"
           :src="ogImage"
           class="card-thumbnail"
+          :class="{ 'is-favicon': isFavicon }"
           :alt="note.content || note.mainTag"
           loading="lazy"
-          @error="ogImage = ''"
+          @error="handleImageError"
         />
         <div v-else class="card-thumbnail-placeholder">
           <span class="material-symbols-outlined" style="font-size: 2.5rem;">link</span>
@@ -749,39 +750,40 @@
                 note: { type: Object, required: true }
             },
             data() {
-                return { ogImage: null };
+                return {
+                    ogImage: '',
+                    isFavicon: false
+                };
             },
             emits: ['delete-note'],
             mounted() {
                 if (this.note.urls && this.note.urls[0]) {
-                    this.loadOgImage(this.note.urls[0]);
+                    if (this.note.ogImage) {
+                        // 後端已爬取到 OGP 大圖，直接顯示
+                        this.ogImage = this.note.ogImage;
+                        this.isFavicon = false;
+                    } else {
+                        // 後端無圖（冷門網站），退回 Favicon 保底
+                        this.setFallbackFavicon(this.note.urls[0]);
+                    }
                 }
             },
             methods: {
-                /**
-                 * 取得連結真實的 OGP 預覽圖
-                 * 使用免費穩定的 dub.co metatags API，若失敗則退為 Google Favicon 顯示
-                 */
-                async loadOgImage(url) {
+                // 退回使用 Google Favicon 作為備案縮圖
+                setFallbackFavicon(url) {
                     try {
-                        const api = `https://api.dub.co/metatags?url=${encodeURIComponent(url)}`;
-                        const res = await fetch(api);
-                        if (!res.ok) throw new Error('OGP API Failed');
+                        const domainUrl = new URL(url).origin;
+                        this.ogImage = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(domainUrl)}&size=128`;
+                        this.isFavicon = true;
+                    } catch (err) { }
+                },
 
-                        const data = await res.json();
-                        if (data && data.image) {
-                            this.ogImage = data.image; // 成功拿到真實 OGP 大圖
-                        } else {
-                            throw new Error('No OGP image found');
-                        }
-                    } catch (e) {
-                        // 備案：如果抓不到 OGP 或者出現錯誤，就使用 Google Favicon API
-                        try {
-                            const domainUrl = new URL(url).origin;
-                            this.ogImage = `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=${encodeURIComponent(domainUrl)}&size=128`;
-                        } catch (err) {
-                            // 解析失敗則不顯示
-                        }
+                // 若後端 OGP 圖連結已失效破圖，也退回 Favicon
+                handleImageError() {
+                    if (!this.isFavicon && this.note.urls && this.note.urls[0]) {
+                        this.setFallbackFavicon(this.note.urls[0]);
+                    } else {
+                        this.ogImage = '';
                     }
                 },
 
