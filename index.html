@@ -159,7 +159,7 @@
        Header 專屬的深色搜尋框覆寫
     ============================== */
         .search-bar.header-search {
-            padding: 18px 0 0 0;
+            padding: 24px 0 0 0;
             /* 加大與上方標題/附標題的間距 */
         }
 
@@ -230,8 +230,8 @@
             /* 預留底線空間 */
             background: transparent;
             color: var(--text-2);
-            font-size: .95rem;
-            font-weight: 600;
+            font-size: 1.05rem;
+            font-weight: 700;
             cursor: pointer;
             transition: all var(--transition);
             white-space: nowrap;
@@ -646,7 +646,7 @@
                     <div class="search-input-wrap"
                         style="padding: 8px 14px; margin: 12px 16px 0; border-radius: var(--radius-sm); border: 1px solid var(--border); box-shadow: none;">
                         <span class="search-icon material-symbols-outlined" style="font-size: 1.1rem;">filter_alt</span>
-                        <input v-model="subSearchQuery" class="search-input" style="font-size: 15px;" type="text"
+                        <input v-model="subSearchQuery" class="search-input" style="font-size: 13px;" type="text"
                             :placeholder="'在 ' + (activeSub || activeMain) + ' 中搜尋...'" inputmode="search" />
                         <span v-if="subSearchQuery" class="search-clear material-symbols-outlined"
                             style="font-size: 1.2rem;" @click="subSearchQuery = ''">close</span>
