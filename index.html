@@ -602,7 +602,7 @@
                     <div class="search-input-wrap">
                         <span class="search-icon material-symbols-outlined">search</span>
                         <input v-model="searchQuery" class="search-input" type="text" placeholder="搜尋全站筆記內容或標籤…"
-                            inputmode="search" />
+                            inputmode="search" @keyup.enter="$event.target.blur()" />
                         <span v-if="searchQuery" class="search-clear material-symbols-outlined"
                             @click="searchQuery = ''">close</span>
                     </div>
@@ -650,7 +650,8 @@
                         style="padding: 8px 14px; margin: 12px 16px 0; border-radius: var(--radius-sm); border: 1px solid var(--border); box-shadow: none;">
                         <span class="search-icon material-symbols-outlined" style="font-size: 1.1rem;">filter_alt</span>
                         <input v-model="subSearchQuery" class="search-input" style="font-size: 13px;" type="text"
-                            :placeholder="'在 ' + (activeSub || activeMain) + ' 中搜尋...'" inputmode="search" />
+                            :placeholder="'在 ' + (activeSub || activeMain) + ' 中搜尋...'" inputmode="search"
+                            @keyup.enter="$event.target.blur()" />
                         <span v-if="subSearchQuery" class="search-clear material-symbols-outlined"
                             style="font-size: 1.2rem;" @click="subSearchQuery = ''">close</span>
                     </div>
