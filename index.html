@@ -286,6 +286,12 @@
             }
         }
 
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
         .note-card:hover {
             transform: translateY(-2px);
             box-shadow: var(--shadow-md);
@@ -497,10 +503,19 @@
         <template v-else>
             <!-- Header -->
             <header class="app-header">
-                <h1 style="display: flex; align-items: center; gap: 6px;">
-                    <span class="material-symbols-outlined" style="font-size: 1.5rem;">edit_note</span>
-                    筆記小幫手
-                </h1>
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <h1 style="display: flex; align-items: center; gap: 6px;">
+                        <span class="material-symbols-outlined" style="font-size: 1.5rem;">edit_note</span>
+                        筆記小幫手
+                    </h1>
+                    <!-- 同步狀態指示器 -->
+                    <div v-if="isSyncing"
+                        style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; color: rgba(255,255,255,0.8);">
+                        <span class="material-symbols-outlined"
+                            style="font-size: 1rem; animation: spin 1s linear infinite;">sync</span>
+                        同步中
+                    </div>
+                </div>
                 <p class="subtitle">{{ userDisplayName }} 的筆記庫 · 共 {{ allNotes.length }} 則</p>
             </header>
 
@@ -701,6 +716,8 @@
                 const errorMsg = ref('');
                 const userDisplayName = ref('你');
                 const allNotes = ref([]);           // 當前使用者全部筆記
+                const isSyncing = ref(false);       // 是否正在背景同步資料
+                let fetchVersion = 0;               // 用於防止 API 回傳順序錯亂 (Race Condition)
 
                 // --- Tab 狀態 ---
                 const activeMain = ref('');
@@ -800,17 +817,54 @@
 
                 // ── 刪除 API 呼叫與本地狀態更新 ──
                 const onDeleteNote = async (noteId) => {
-                    // 樂觀更新：先從本地移除，讓畫面瞬間刷新
+                    fetchVersion++; // 阻斷任何正在背景撈取舊資料的請求覆蓋畫面
                     const originalNotes = [...allNotes.value];
                     allNotes.value = allNotes.value.filter(n => n.noteId !== noteId);
 
+                    // 同步寫入快取，讓使用者感覺瞬間刪除
+                    const cacheKey = `notes_cache_${targetIdRef.value}`;
+                    localStorage.setItem(cacheKey, JSON.stringify(allNotes.value));
+
+                    isSyncing.value = true;
                     try {
                         await callApi('delete', { noteId });
+                        // 確保遠端真的刪除後，再次啟動背景更新
+                        fetchData();
                     } catch (e) {
                         alert(`刪除失敗：${e.message}`);
                         // 發生錯誤則還原本地資料
                         allNotes.value = originalNotes;
+                        localStorage.setItem(cacheKey, JSON.stringify(allNotes.value));
+                        isSyncing.value = false;
                     }
+                };
+
+                // ── 抓取最新資料 ──
+                const fetchData = () => {
+                    isSyncing.value = true;
+                    const currentVersion = ++fetchVersion; // 紀錄當下發出請求的版本號
+                    const cacheKey = `notes_cache_${targetIdRef.value}`;
+
+                    callApi('getNotes')
+                        .then(data => {
+                            // 💡 防呆機制：如果這段期間內使用者有按刪除(fetchVersion被改變)，這包回傳的舊資料就必須丟棄！
+                            if (currentVersion === fetchVersion) {
+                                allNotes.value = data.notes || [];
+                                localStorage.setItem(cacheKey, JSON.stringify(data.notes));
+                                state.value = 'ready'; // 解除 Loading 狀態
+                                isSyncing.value = false;
+                            }
+                        })
+                        .catch(err => {
+                            if (currentVersion === fetchVersion) {
+                                if (state.value === 'loading') {
+                                    errorMsg.value = `載入失敗：${err.message}`;
+                                    state.value = 'error';
+                                }
+                                isSyncing.value = false;
+                            }
+                            console.error('GAS API 拉取錯誤:', err);
+                        });
                 };
 
                 // ── 初始化 LIFF 並載入資料 ──
@@ -846,17 +900,20 @@
                         }
                         targetIdRef.value = targetId;
 
-                        // 呼叫 GAS API 取得最新筆記 (使用安全 POST + Token)
-                        callApi('getNotes')
-                            .then(data => {
-                                allNotes.value = data.notes || [];
-                                state.value = 'ready'; // 解除 Loading 狀態
-                            })
-                            .catch(err => {
-                                errorMsg.value = `載入失敗：${err.message}`;
-                                state.value = 'error';
-                                console.error('GAS API 拉取錯誤:', err);
-                            });
+                        // 💡 效能優化：先從 localStorage 顯示暫存快取，讓畫面「秒開」
+                        const cacheKey = `notes_cache_${targetId}`;
+                        const cachedData = localStorage.getItem(cacheKey);
+                        if (cachedData) {
+                            try {
+                                allNotes.value = JSON.parse(cachedData);
+                                state.value = 'ready'; // 直接解除 5 秒的 Loading 狀態！
+                            } catch (e) {
+                                console.warn("快取解析失敗", e);
+                            }
+                        }
+
+                        // 背景啟動向 GAS API 拿取最新筆記 (SWR 機制)
+                        fetchData();
 
                     } catch (err) {
                         errorMsg.value = `初始化失敗：${err.message}`;
@@ -871,7 +928,7 @@
                     activeMain, activeSub,
                     displayedNotes, filteredBySearch,
                     searchQuery, selectMain,
-                    onDeleteNote, targetIdRef
+                    onDeleteNote, targetIdRef, isSyncing
                 };
             }
         });
