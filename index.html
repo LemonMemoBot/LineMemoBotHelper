@@ -804,17 +804,12 @@
                     const originalNotes = [...allNotes.value];
                     allNotes.value = allNotes.value.filter(n => n.noteId !== noteId);
 
-                    // 同步更新本地快取
-                    const cacheKey = `notes_cache_${targetIdRef.value}`;
-                    localStorage.setItem(cacheKey, JSON.stringify(allNotes.value));
-
                     try {
                         await callApi('delete', { noteId });
                     } catch (e) {
                         alert(`刪除失敗：${e.message}`);
                         // 發生錯誤則還原本地資料
                         allNotes.value = originalNotes;
-                        localStorage.setItem(cacheKey, JSON.stringify(allNotes.value));
                     }
                 };
 
@@ -851,37 +846,15 @@
                         }
                         targetIdRef.value = targetId;
 
-                        // 💡 效能優化：先從 localStorage 顯示暫存快取，讓畫面「秒開」
-                        const cacheKey = `notes_cache_${targetId}`;
-                        const cachedData = localStorage.getItem(cacheKey);
-                        if (cachedData) {
-                            try {
-                                allNotes.value = JSON.parse(cachedData);
-                                state.value = 'ready'; // 直接解除 Loading 狀態
-                            } catch (e) {
-                                console.warn("快取解析失敗", e);
-                            }
-                        }
-
-                        // 背景呼叫 GAS API 取得最新筆記 (使用安全 POST + Token)
+                        // 呼叫 GAS API 取得最新筆記 (使用安全 POST + Token)
                         callApi('getNotes')
                             .then(data => {
                                 allNotes.value = data.notes || [];
-
-                                // 更新快取
-                                localStorage.setItem(cacheKey, JSON.stringify(data.notes));
-
-                                // 如果原本沒快取，現在才解開 Loading
-                                if (state.value === 'loading') {
-                                    state.value = 'ready';
-                                }
+                                state.value = 'ready'; // 解除 Loading 狀態
                             })
                             .catch(err => {
-                                // 只有在連快取都沒有的情況下才顯示錯誤
-                                if (state.value === 'loading') {
-                                    errorMsg.value = `載入失敗：${err.message}`;
-                                    state.value = 'error';
-                                }
+                                errorMsg.value = `載入失敗：${err.message}`;
+                                state.value = 'error';
                                 console.error('GAS API 拉取錯誤:', err);
                             });
 
