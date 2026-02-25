@@ -353,13 +353,17 @@
             box-shadow: var(--shadow-md);
         }
 
-        /* 網址預覽圖 */
+        /* 網址預覽圖或純文字版空間 */
         .card-og-wrap {
             width: 100%;
-            aspect-ratio: 4 / 3;
+            aspect-ratio: 16 / 9;
+            /* 讓圖片高度變小一點，長寬比更扁 */
             background: #f8f9fa;
             position: relative;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .card-thumbnail {
@@ -691,27 +695,39 @@
 
     <!-- NoteCard 元件模板 -->
     <script type="text/x-template" id="note-card-tpl">
-    <a :href="note.urls && note.urls[0] ? note.urls[0] : '#'" target="_blank" @click="handleCardClick($event)" class="note-card">
+    <a :href="note.urls && note.urls[0] ? note.urls[0] : null" 
+       :target="note.urls && note.urls[0] ? '_blank' : null" 
+       @click="handleCardClick($event)" 
+       class="note-card"
+       :style="note.urls && note.urls[0] ? {} : { cursor: 'default' }">
       
       <!-- 絕對定位的刪除按鈕 (右上角) -->
       <button class="btn-delete" @click.stop.prevent="confirmDelete" title="刪除筆記">
           <span class="material-symbols-outlined">delete</span>
       </button>
 
-      <!-- OG 圖片預覽（如果有網址則顯示） -->
-      <div v-if="note.urls && note.urls[0]" class="card-og-wrap">
-        <img
-          v-if="ogImage"
-          :src="ogImage"
-          class="card-thumbnail"
-          :class="{ 'is-favicon': isFavicon }"
-          :alt="note.content || note.mainTag"
-          loading="lazy"
-          @error="handleImageError"
-        />
-        <div v-else class="card-thumbnail-placeholder">
-          <span class="material-symbols-outlined" style="font-size: 2.5rem;">link</span>
-        </div>
+      <!-- 頂部預覽區塊：有網址顯示預覽圖或連結圖示，純文字顯示筆記圖示 -->
+      <div class="card-og-wrap">
+        <template v-if="note.urls && note.urls[0]">
+          <img
+            v-if="ogImage"
+            :src="ogImage"
+            class="card-thumbnail"
+            :class="{ 'is-favicon': isFavicon }"
+            :alt="note.content || note.mainTag"
+            loading="lazy"
+            @error="handleImageError"
+          />
+          <div v-else class="card-thumbnail-placeholder">
+            <span class="material-symbols-outlined" style="font-size: 2.2rem; opacity: 0.8;">link</span>
+          </div>
+        </template>
+        <template v-else>
+          <!-- 純文字筆記專用：無網址狀態 -->
+          <div class="card-thumbnail-placeholder" style="background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); color: #6b7280;">
+            <span class="material-symbols-outlined" style="font-size: 2.5rem; opacity: 0.7;">description</span>
+          </div>
+        </template>
       </div>
 
       <div class="card-body">
