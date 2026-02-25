@@ -637,7 +637,7 @@
                 </div>
 
                 <!-- 子分類 Tab -->
-                <div class="sub-tabs" v-if="subTags.length > 1" role="tablist">
+                <div class="sub-tabs" v-if="subTags.length > 0" role="tablist">
                     <button v-for="sub in subTags" :key="sub" class="sub-tab-btn" :class="{ active: activeSub === sub }"
                         role="tab" @click="activeSub = sub">
                         {{ sub }}
