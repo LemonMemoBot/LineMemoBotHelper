@@ -61,6 +61,12 @@
             padding: 0;
         }
 
+        html,
+        body {
+            overflow-x: hidden;
+            width: 100%;
+        }
+
         body {
             font-family: 'Noto Sans TC', -apple-system, sans-serif;
             background: var(--bg);
@@ -565,9 +571,23 @@
                     </button>
                 </div>
 
+                <!-- 分類內過濾搜尋 (在現有分類下二次搜尋) -->
+                <div class="sub-category-search" v-if="activeMain">
+                    <div class="search-input-wrap"
+                        style="padding: 8px 14px; margin: 12px 16px 0; border-radius: var(--radius-sm); border: 1px solid var(--border); box-shadow: none;">
+                        <span class="search-icon material-symbols-outlined" style="font-size: 1.1rem;">filter_alt</span>
+                        <input v-model="subSearchQuery" class="search-input" style="font-size: 15px;" type="text"
+                            :placeholder="'在 ' + (activeSub || activeMain) + ' 中搜尋...'" inputmode="search" />
+                        <span v-if="subSearchQuery" class="search-clear material-symbols-outlined"
+                            style="font-size: 1.2rem;" @click="subSearchQuery = ''">close</span>
+                    </div>
+                </div>
+
                 <!-- 筆記清單 -->
                 <div class="notes-meta">
-                    <span class="notes-count">{{ displayedNotes.length }} 則筆記</span>
+                    <span class="notes-count" v-if="subSearchQuery">包含「{{ subSearchQuery }}」共 {{ displayedNotes.length
+                        }} 則</span>
+                    <span class="notes-count" v-else>{{ displayedNotes.length }} 則筆記</span>
                 </div>
 
                 <div class="cards-grid">
@@ -575,10 +595,18 @@
                         @delete-note="onDeleteNote"></note-card>
 
                     <div v-if="displayedNotes.length === 0" class="empty-state">
-                        <span class="material-symbols-outlined emoji"
-                            style="font-size: 3rem; color: var(--brand);">inbox</span>
-                        <h3>這個分類還沒有筆記</h3>
-                        <p>在 LINE 聊天室中輸入<br /><strong>#{{ activeMain }} 內容</strong><br />即可新增筆記</p>
+                        <template v-if="subSearchQuery">
+                            <span class="material-symbols-outlined emoji"
+                                style="font-size: 3rem; color: var(--text-3);">search_off</span>
+                            <h3>找不到符合「{{subSearchQuery}}」的筆記</h3>
+                            <p>試著清除過濾條件</p>
+                        </template>
+                        <template v-else>
+                            <span class="material-symbols-outlined emoji"
+                                style="font-size: 3rem; color: var(--brand);">inbox</span>
+                            <h3>這個分類還沒有筆記</h3>
+                            <p>在 LINE 聊天室中輸入<br /><strong>#{{ activeMain }} 內容</strong><br />即可新增筆記</p>
+                        </template>
                     </div>
                 </div>
             </template>
@@ -725,6 +753,7 @@
 
                 // --- 搜尋 ---
                 const searchQuery = ref('');
+                const subSearchQuery = ref(''); // 分類內二次搜尋
 
                 // ── 主分類清單 ──
                 const mainTags = computed(() => {
@@ -737,7 +766,7 @@
                     return [...new Set(source.map(n => n.subTag))].sort();
                 });
 
-                // ── 顯示的筆記（按主/子 Tab 過濾） ──
+                // ── 顯示的筆記（按主/子 Tab 與分類內過濾） ──
                 const displayedNotes = computed(() => {
                     let notes = allNotes.value;
                     if (activeMain.value) {
@@ -745,6 +774,16 @@
                     }
                     if (activeSub.value) {
                         notes = notes.filter(n => n.subTag === activeSub.value);
+                    }
+                    // 分類內的二次搜尋
+                    const sw = subSearchQuery.value.trim().toLowerCase();
+                    if (sw) {
+                        notes = notes.filter(n =>
+                            n.mainTag.toLowerCase().includes(sw) ||
+                            n.subTag.toLowerCase().includes(sw) ||
+                            n.content.toLowerCase().includes(sw) ||
+                            (n.urls || []).some(u => u.toLowerCase().includes(sw))
+                        );
                     }
                     // 最新在前
                     return notes.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -766,6 +805,11 @@
                         activeSub.value = '';
                     }
                 }, { immediate: true });
+
+                // 切換主分類或子分類時，清空當下的二次搜尋框
+                watch([activeMain, activeSub], () => {
+                    subSearchQuery.value = '';
+                });
 
                 // ── 搜尋過濾（全文比對） ──
                 const filteredBySearch = computed(() => {
@@ -950,7 +994,7 @@
                     allNotes, mainTags, subTags,
                     activeMain, activeSub,
                     displayedNotes, filteredBySearch,
-                    searchQuery, selectMain,
+                    searchQuery, subSearchQuery, selectMain,
                     onDeleteNote, targetIdRef, isSyncing
                 };
             }
