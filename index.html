@@ -869,6 +869,32 @@
 
                 // ── 初始化 LIFF 並載入資料 ──
                 onMounted(async () => {
+                    // 💡 終極效能優化 1：先斬後奏！在 init 前直接從網址解析 ownerId (處理 LINE 轉址與 liff.state)
+                    let earlyOwnerId = null;
+                    try {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        earlyOwnerId = urlParams.get('ownerId');
+                        if (!earlyOwnerId) {
+                            const liffState = urlParams.get('liff.state');
+                            if (liffState) {
+                                const stateParams = new URLSearchParams(liffState);
+                                earlyOwnerId = stateParams.get('ownerId');
+                            }
+                        }
+
+                        // 💡 終極效能優化 2：有了 ID，直接在 0 毫秒時拿出快取並解除 Loading 畫面！
+                        if (earlyOwnerId) {
+                            const cacheKey = `notes_cache_${earlyOwnerId}`;
+                            const cachedData = localStorage.getItem(cacheKey);
+                            if (cachedData) {
+                                allNotes.value = JSON.parse(cachedData);
+                                state.value = 'ready'; // 畫面瞬間秒開 !!!
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('提早讀取快取失敗', e);
+                    }
+
                     try {
                         await liff.init({ liffId: LIFF_ID });
 
@@ -877,43 +903,40 @@
                             return;
                         }
 
-                        // 💡 核心解法：優先從網址參數取得 ownerId (由機器人帶入)
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const paramOwnerId = urlParams.get('ownerId');
-
-                        // 取得使用者資料與環境 (作為備案)
-                        const profile = await liff.getProfile();
                         const context = liff.getContext();
+                        let targetId = earlyOwnerId || '';
 
-                        let targetId = '';
-                        if (paramOwnerId) {
-                            // 如果網址有帶，直接信任網址 (解決 Provider 脫鉤與 Room 隱私問題)
-                            targetId = paramOwnerId;
-                            userDisplayName.value = targetId.startsWith('C') || targetId.startsWith('R') ? '群組' : profile.displayName;
-                        } else if (context && (context.type === 'group' || context.type === 'room')) {
-                            // 退回舊版機制 (萬一使用者不是透過按鈕點擊進來)
-                            targetId = context.groupId || context.roomId;
-                            userDisplayName.value = '群組';
-                        } else {
-                            targetId = profile.userId;
-                            userDisplayName.value = profile.displayName;
-                        }
-                        targetIdRef.value = targetId;
+                        // 萬一網址真的沒有帶參數，才退回舊版機制查 context
+                        if (!targetId) {
+                            if (context && (context.type === 'group' || context.type === 'room')) {
+                                targetId = context.groupId || context.roomId;
+                            } else {
+                                targetId = liff.getDecodedIDToken()?.sub || 'unknown'; // 直接解 payload 拿 userID 防呆
+                            }
 
-                        // 💡 效能優化：先從 localStorage 顯示暫存快取，讓畫面「秒開」
-                        const cacheKey = `notes_cache_${targetId}`;
-                        const cachedData = localStorage.getItem(cacheKey);
-                        if (cachedData) {
-                            try {
-                                allNotes.value = JSON.parse(cachedData);
-                                state.value = 'ready'; // 直接解除 5 秒的 Loading 狀態！
-                            } catch (e) {
-                                console.warn("快取解析失敗", e);
+                            // 這裡再補抓一次快取，因為這是第一時間沒有 earlyOwnerId 的備案
+                            const cacheKey = `notes_cache_${targetId}`;
+                            const cachedData = localStorage.getItem(cacheKey);
+                            if (cachedData && state.value !== 'ready') {
+                                try {
+                                    allNotes.value = JSON.parse(cachedData);
+                                    state.value = 'ready';
+                                } catch (e) { }
                             }
                         }
 
-                        // 背景啟動向 GAS API 拿取最新筆記 (SWR 機制)
+                        targetIdRef.value = targetId;
+                        userDisplayName.value = targetId.startsWith('C') || targetId.startsWith('R') ? '群組' : '使用者';
+
+                        // 呼叫 GAS API 取得最新筆記 (SWR 機制，背景執行)
                         fetchData();
+
+                        // 💡 終極效能優化 3：把耗時的 liff.getProfile 放到最後非同步處理，不阻礙抓資料！
+                        liff.getProfile().then(profile => {
+                            if (!targetId.startsWith('C') && !targetId.startsWith('R')) {
+                                userDisplayName.value = profile.displayName;
+                            }
+                        }).catch(e => console.warn('抓取個人資料失敗或遭限制:', e));
 
                     } catch (err) {
                         errorMsg.value = `初始化失敗：${err.message}`;
